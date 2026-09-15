@@ -294,11 +294,17 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		a.initialized.Store(true)
 	}
 
-	go func() { //nolint:contextcheck // TODO: fix this later
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-		defer cancel()
-		host.PollForMMDSOpts(ctx, a.mmdsChan, a.defaults.EnvVars)
-	}()
+	// MMDS is only served by the Firecracker-based deployment: containerized
+	// environments (isNotFC) have no metadata service, where the futile polling
+	// leaks dangling in-flight connections and can break runsc checkpointing.
+	// Mirror the guard in main.go and skip it.
+	if !a.isNotFC {
+		go func() { //nolint:contextcheck // TODO: fix this later
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			host.PollForMMDSOpts(ctx, a.mmdsChan, a.defaults.EnvVars)
+		}()
+	}
 
 	// After SetData, so this reports what is actually in effect rather than what was
 	// requested. Set before WriteHeader.
