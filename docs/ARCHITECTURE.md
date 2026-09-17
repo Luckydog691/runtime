@@ -137,11 +137,12 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   orchestrator re-sync; a fork starts a new workload and does not inherit them.
 - **Placement**: keeps a live map of orchestrator nodes (discovered via Nomad, Kubernetes, or a
   static list). Chooses a node per sandbox with a **best-of-K** algorithm
-  (`internal/orchestrator/placement/`): sample K ready nodes, score by CPU
-  commitment/usage, pick the lowest; retry on exhausted nodes. With
-  `best-of-k-hugepage-memory` on, each node's score is the higher of its CPU
-  load and its hugepage-pool load. A node that reports no pool scores 0.5.
-  Tunable live via feature flags.
+  (`internal/orchestrator/placement/`): sample K ready nodes, score by the
+  higher of CPU load and hugepage-pool load, pick the lowest; retry on
+  exhausted nodes. A node that reports no pool scores 0.5. Hugepage scoring
+  is on by default (`BEST_OF_K_HUGEPAGE_MEMORY`); set it false to rank on
+  CPU alone. K, overcommit ratio, and alpha are tunable live via feature
+  flags.
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes) and the
   sandbox→node **routing catalog** (`sandbox:catalog:{id}`) in Redis that client-proxy reads. This
   API-written record is the default routing source; the orchestrator-written
@@ -312,7 +313,8 @@ OpenAPI security scheme accepts only short-lived service JWTs verified against t
 `/.well-known/jwks.json` endpoint, with accepted signing methods derived from each JWK's required
 `alg` metadata. Issuers and audiences are configured through the JSON `ADMIN_AUTH_PROVIDER_CONFIG` value —
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
-orchestrators.
+orchestrators. The web dashboard itself is a separate repository (github.com/e2b-dev/dashboard)
+published as an image; E2B Embed runs it on port 3001 beside dashboard-api.
 
 An issuer normally configures at least one accepted audience, binding a JWT to its intended target.
 An issuer may omit `audiences` only with no `audienceMatchPolicy`; this deliberately disables
@@ -641,6 +643,9 @@ deletion owns a separate hold until artifact cleanup returns.
 
 The services are scheduler-agnostic binaries and containers; the supported way to run them is the
 Kubernetes-based distribution. The roles below hold regardless of how the nodes are provisioned.
+E2B Embed (`embed/`) runs the same containers on one machine, the web dashboard included, in three
+shapes (Compose, Terraform for GCP, Kubernetes); its ports, start order and images are in
+`embed/docs/REFERENCE.md`.
 
 ```mermaid
 flowchart TB
@@ -697,6 +702,7 @@ packages/
   local-dev/            docker-compose local stack + DB seeding
 spec/                   OpenAPI specs (public, edge, dashboard) — codegen sources
 tests/integration/      Integration tests against a live deployment
+embed/                  E2B Embed: the whole stack on one machine (Compose, Terraform, Kubernetes)
 ```
 
 Cross-service contracts are all generated: OpenAPI specs in `spec/`, gRPC protos in
